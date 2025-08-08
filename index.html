@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>Tap The Green</title>
+<meta name="description" content="Tippe nur grüne Blasen. Rot = Game Over." />
+<style>
+:root { --bg:#0f1220; --fg:#e6e6e6; --accent:#62ff8e; --danger:#ff4d5a; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;}
+#ui { position: fixed; inset: 0; display:flex; flex-direction:column; }
+header, footer { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; gap:8px; }
+header { font-weight:600; }
+#score, #lives, #best { font-variant-numeric: tabular-nums; }
+#lives .heart { color: var(--danger); margin-left:2px; }
+#wrap { flex:1; position:relative; }
+canvas { width:100%; height:100%; display:block; touch-action:none; }
+#overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background: linear-gradient(180deg, rgba(15,18,32,0.0), rgba(15,18,32,0.85)); backdrop-filter: blur(2px); }
+.card { text-align:center; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  padding:18px 16px; border-radius:16px; max-width: min(90vw, 420px); }
+.title { font-size: clamp(22px, 5vw, 28px); margin-bottom:8px; }
+.subtitle { opacity:.9; font-size:14px; margin-bottom:16px; }
+.btnrow { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+button { cursor:pointer; border:none; border-radius:12px; padding:12px 16px; font-weight:700; background: var(--accent); color:#06140c; font-size:16px; }
+button.secondary { background: transparent; color: var(--fg); border:1px solid rgba(255,255,255,0.2); }
+footer { gap:10px; opacity:.8; font-size:12px; }
+.chip { border:1px solid rgba(255,255,255,0.2); border-radius:999px; padding:6px 10px; }
+@media (hover:hover) { button:hover { filter: brightness(1.05); } }
+</style></head>
+<body>
+<div id="ui">
+  <header>
+    <div id="score">Score: 0</div>
+    <div id="lives">❤❤❤</div>
+    <div id="best">Best: 0</div>
+  </header>
+
+  <div id="wrap">
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <div class="card">
+        <div class="title">Tap The Green</div>
+        <div class="subtitle">Tippe nur <b style="color:var(--accent)">grün</b>. Rot = sofort Game Over. Verpasse keine grünen (du hast 3 Leben).</div>
+        <div class="btnrow">
+          <button id="startBtn">Start</button>
+          <button id="shareBtn" class="secondary">Teilen</button>
+        </div>
+        <div id="lastRun" style="margin-top:10px; opacity:.8; font-size:13px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="chip">Steigt immer schneller ⏩</div>
+    <div class="chip">Highscore wird lokal gespeichert</div>
+  </footer>
+</div>
+
+<script>
+(()=>{const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),
+livesEl=document.getElementById('lives'),overlay=document.getElementById('overlay'),
+startBtn=document.getElementById('startBtn'),shareBtn=document.getElementById('shareBtn'),
+lastRun=document.getElementById('lastRun');
+let best=Number(localStorage.getItem('ttg_best')||0);bestEl.textContent='Best: '+best;
+
+function sizeCanvasElement(){const wrap=document.getElementById('wrap');
+const h=window.innerHeight-document.querySelector('header').offsetHeight-document.querySelector('footer').offsetHeight;
+wrap.style.height=h+'px';}
+function fitCanvas(){const dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+const r=canvas.getBoundingClientRect();canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
+ctx.setTransform(dpr,0,0,dpr,0,0);}
+function onResize(){sizeCanvasElement();fitCanvas();if(!running)drawHint();}
+window.addEventListener('resize',onResize);onResize();
+
+let running=false,score=0,lives=3,time=0,lastSpawn=0,spawnEvery=900,speed=60,greenChance=.8,difficultyTick=0;
+const bubbles=[];const rnd=(a,b)=>a+Math.random()*(b-a);
+function updateHUD(){scoreEl.textContent='Score: '+score;
+livesEl.innerHTML='❤'.repeat(lives).split('').map(()=>'<span class="heart">❤</span>').join('');
+bestEl.textContent='Best: '+best;}
+function clear(){ctx.clearRect(0,0,canvas.width,canvas.height);}
+function drawHint(){const w=canvas.clientWidth,h=canvas.clientHeight;ctx.save();ctx.globalAlpha=.15;
+for(let i=0;i<14;i++){const r=rnd(18,42),x=rnd(r,w-r),y=rnd(r,h-r);ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+ctx.fillStyle=(i%3===0)?'#ff4d5a':'#62ff8e';ctx.fill();}ctx.restore();}
+function reset(){running=false;score=0;lives=3;time=0;lastSpawn=0;spawnEvery=900;speed=60;greenChance=.8;difficultyTick=0;
+bubbles.length=0;updateHUD();clear();drawHint();}
+function spawnBubble(){const w=canvas.clientWidth,r=rnd(18,30),x=rnd(r,w-r),color=Math.random()<greenChance?'green':'red';
+bubbles.push({x,y:canvas.clientHeight+r,r,color,vy:-rnd(speed*.7,speed*1.2)/60});}
+function vibrate(ms=30){if('vibrate'in navigator)try{navigator.vibrate(ms)}catch{}}
+function gameOver(){running=false;if(score>best){best=score;localStorage.setItem('ttg_best',String(best));}
+overlay.style.display='flex';lastRun.textContent=`Letzte Runde: ${score} Punkt${score===1?'':'e'}. Best: ${best}.`;}
+function tick(){if(!running)return;const dt=16.7;time+=dt;if(time-difficultyTick>2500){difficultyTick=time;speed=Math.min(speed+6,180);
+spawnEvery=Math.max(340,spawnEvery-40);greenChance=Math.max(.45,greenChance-.02);}if(time-lastSpawn>spawnEvery){lastSpawn=time;spawnBubble();
+if(score>15&&Math.random()<.35)spawnBubble();}clear();for(let i=bubbles.length-1;i>=0;i--){const b=bubbles[i];b.y+=b.vy*(dt/16.7)*(canvas.clientHeight/700+.3);
+ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fillStyle=b.color==='green'?'#62ff8e':'#ff4d5a';
+ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;if(b.y<-b.r){if(b.color==='green'){lives--;vibrate(50);
+if(lives<=0){gameOver();return;}updateHUD();}bubbles.splice(i,1);}}requestAnimationFrame(tick);}
+function handleTap(px,py){if(!running)return;for(let i=bubbles.length-1;i>=0;i--){const b=bubbles[i],dx=px-b.x,dy=py-b.y;
+if(dx*dx+dy*dy<=b.r*b.r){if(b.color==='green'){bubbles.splice(i,1);score++;updateHUD();vibrate(15);
+ctx.beginPath();ctx.arc(b.x,b.y,b.r*1.3,0,Math.PI*2);ctx.strokeStyle='#62ff8e';ctx.lineWidth=3;ctx.stroke();}
+else{vibrate(120);gameOver();}return;}}}
+canvas.addEventListener('pointerdown',e=>{const r=canvas.getBoundingClientRect();handleTap(e.clientX-r.left,e.clientY-r.top)},{passive:true});
+document.getElementById('startBtn').addEventListener('click',()=>{overlay.style.display='none';reset();running=true;requestAnimationFrame(tick);});
+document.getElementById('shareBtn').addEventListener('click',async()=>{const text=lastRun.textContent?.trim()||`Mein Highscore bei "Tap The Green": ${best}`;
+const url=location.href;if(navigator.share){try{await navigator.share({title:'Tap The Green',text,url});}catch{}}else{try{await navigator.clipboard.writeText(`${text} — ${url}`);shareBtn.textContent='Link kopiert ✓';setTimeout(()=>shareBtn.textContent='Teilen',1200);}catch{alert('Link: '+url);}}});
+onResize();reset();})();
+</script>
+</body></html>
